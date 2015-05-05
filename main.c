@@ -10,7 +10,6 @@
 
 
 //TODO: Use Home/End/PgUp/PgDown in edit mode
-//TODO: Change matrix, board, etc. to world
 //TODO: Implement getstr so the directional keys can be used (See TODO below)
 //TODO: Create a default save directory and search the files in there while loading.
 //      The user should be able to choose the file using the up/down keys
@@ -39,7 +38,6 @@ int init_curses(WINDOW** main_win, int* oldcur){
 	*main_win = initscr();
 	start_color();
 
-	//TODO: Theses modes should be defined constants
 	init_pair(COLOR_DEAD_CELL, COLOR_WHITE, COLOR_BLACK);
 	init_pair(COLOR_ALIVE_CELL, COLOR_BLACK, COLOR_WHITE);
 	init_pair(COLOR_MODIFIED_ALIVE_CELL, COLOR_WHITE, COLOR_BLUE);
@@ -68,10 +66,10 @@ char wait_for_keypress() {
 }
 
 //TODO: Truncate the input
-void put_info_with_color(int color, char* text_buffer){
+void put_info_with_color(int color, char* text){
 	move(LINES -1, 0);
 	attron(COLOR_PAIR(color));
-	addstr(text_buffer);
+	addstr(text);
 }
 
 void vprint_info_with_color(int color, char* text, va_list args){
@@ -88,7 +86,6 @@ void print_info(char* text, ...){
 	va_end(args);	
 }
 
-//TODO: Create a helper function to use var_args here too
 void print_info_and_block(char* text, ...) {
 	va_list args;
 	va_start(args, text);
@@ -103,7 +100,7 @@ void print_info_and_block(char* text, ...) {
 	va_end(args);
 }
 
-void clear_text(){
+void clear_display_area(){
 	attron(COLOR_PAIR(1));
 	for(int col = 0; col < COLS; col++){
 		move(LINES - 1, col);
@@ -111,13 +108,13 @@ void clear_text(){
 	}
 }
 
-void validate_and_apply(game_state* state, int* pos_x, int* pos_y,
-						int new_pos_x, int new_pos_y){
+void validate_and_apply(game_state* state, int* col, int* line,
+						int new_col, int new_line){
 
-	if(new_pos_x >= 0 && new_pos_x < state->cols)
-		*pos_x = new_pos_x;
-	if(new_pos_y >= 0 && new_pos_y < state->lines)
-		*pos_y = new_pos_y;
+	if(new_col >= 0 && new_col < state->cols)
+		*col = new_col;
+	if(new_line >= 0 && new_line < state->lines)
+		*line = new_line;
 
 }
 
@@ -137,7 +134,7 @@ void draw_game_without_refresh(game_state* state, int show_generations){
 	}
 
 	if(show_generations){
-		clear_text();
+		clear_display_area();
 		print_info("Generation: %d ", state->generations);
 	}
 }
@@ -192,16 +189,14 @@ void edit_game(game_state* state){
 	print_info("  Edit Mode  ");
 
 	timeout(-1);
-	//README: Maybe change these variables to line and col.
-	//		  Or abstract them into a struct.
-	//        Or refactor the model code?
-	int pos_x = 0;
-	int pos_y = 0;
+
+	int col = 0;
+	int line = 0;
 
 	int has_world_been_modified = 0;
 
 	while(TRUE){
-		draw_game_edit_mode(state, pos_y, pos_x);
+		draw_game_edit_mode(state, line, col);
 		
 		int input_char = getch();
 
@@ -209,13 +204,13 @@ void edit_game(game_state* state){
 			case 'q':
 				return;
 			case 'a':
-				set_cell_at_pos(state, pos_y, pos_x, ALIVE);
+				set_cell_at_pos(state, line, col, ALIVE);
 				break;
 			case 'd':
-				set_cell_at_pos(state, pos_y, pos_x, DEAD);
+				set_cell_at_pos(state, line, col, DEAD);
 				break;
 			case 't':
-				toggle_cell_at_pos(state, pos_y, pos_x);
+				toggle_cell_at_pos(state, line, col);
 				break;
 			case 27: //Escape char
 				input_char = getch();
@@ -223,26 +218,26 @@ void edit_game(game_state* state){
 					break;
 
 				input_char = getch();
-				int new_pos_x = pos_x;
-				int new_pos_y = pos_y;
+				int new_col = col;
+				int new_line = line;
 
 				switch (input_char){
 					case 68: //Left
-						new_pos_x--;
+						new_col--;
 						break;
 					case 65: //Up
-						new_pos_y--;
+						new_line--;
 						break;
 					case 67: //Right
-						new_pos_x++;
+						new_col++;
 						break;
 					case 66: //Down
-						new_pos_y++;
+						new_line++;
 						break;
 					default:	
 						break;
 				}
-				validate_and_apply(state, &pos_x, &pos_y, new_pos_x, new_pos_y);
+				validate_and_apply(state, &col, &line, new_col, new_line);
 				break;
 			default:
 				break;
@@ -273,7 +268,7 @@ void prompt_filename(char* filename, int oldcur){
 	curs_set(oldcur);
 
 	char* msg = "File name:";
-	clear_text();
+	clear_display_area();
 	print_info(msg);
 
 	move(LINES - 1, strlen(msg) + 1);
@@ -329,9 +324,6 @@ int load_game_from_file(game_state* state, char* filename){
 		cols_in_file = state->cols;
 	}
 
-	//TODO: Handle the case wherein the file is smaller than the game_state
-	//      Maybe center the file world
-
 	int padding_line = 0;
 	int padding_col = 0;
 	if(lines_in_file < state->lines || cols_in_file < state->cols){
@@ -370,7 +362,7 @@ void prompt_and_save_game_to_file(game_state* state, int oldcur){
 	prompt_filename(buffer, oldcur);
 
 	if(!save_game_to_file(state, buffer)){
-		clear_text();
+		clear_display_area();
 		print_info_and_block(" Couldn't save file. ");
 	}
 }
@@ -381,7 +373,7 @@ void prompt_and_load_game_from_file(game_state* state, int oldcur){
 	prompt_filename(buffer, oldcur);
 
 	if(!load_game_from_file(state, buffer)){
-		clear_text();
+		clear_display_area();
 		print_info_and_block(" Couldn't open file. ");
 	}
 }
@@ -406,7 +398,7 @@ int main(int argc, char** argv){
 	
 
 	while(running){
-		clear_text();
+		clear_display_area();
 		draw_game(&gameState);
 
 		timeout(-1);

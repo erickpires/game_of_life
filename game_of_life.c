@@ -27,7 +27,7 @@ inline void set_next_state(game_state* state, int line, int col, char value){
 	*(state->next_world + line * state->cols + col) = value;
 }
 
-int count_alive_neighbors(game_state* state, int col, int line){
+int count_alive_neighbors(game_state* state, int line, int col){
 	int result = 0;
 
 	//TODO: This function is called a lot. Make it fast!
@@ -89,7 +89,7 @@ void update_game_state(game_state* state){
 	for(int col = 0; col < state->cols; col++){
 		for(int line = 0; line < state->lines; line++){
 			int is_current_cell_alive = is_cell_alive(state, line, col);
-			int current_cell_alive_neighbors = count_alive_neighbors(state, col, line);
+			int current_cell_alive_neighbors = count_alive_neighbors(state, line, col);
 
 			int current_cell_next_state = is_current_cell_alive; //TODO: reuse the is_current_cell_alive variable
 

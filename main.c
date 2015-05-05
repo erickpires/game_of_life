@@ -8,6 +8,8 @@
 
 #include "game_of_life.c"
 
+
+//TODO: Use Home/End/PgUp/PgDown in edit mode
 //TODO: Change matrix, board, etc. to world
 //TODO: Implement getstr so the directional keys can be used (See TODO below)
 //TODO: Create a default save directory and search the files in there while loading.
@@ -15,7 +17,6 @@
 //TODO: Handle change of terminal size events
 //TODO: Use Unicode
 //TODO: Use stdint (P.S.: This may cause problems in save/load game to file)
-//TODO: Count generations
 //TODO: The boundaries of the board are creating some forms that shouldn't exist. 
 //      (e.g. when a glider reaches the end of the board). This should be handed more
 //      clearer.
@@ -30,11 +31,9 @@
 #define COLOR_MODIFIED_DEAD_CELL 4
 
 #define COLOR_NORMAL_TEXT COLOR_DEAD_CELL
+#define COLOR_WARNING_TEXT COLOR_MODIFIED_ALIVE_CELL
+#define COLOR_QUESTION_TEXT COLOR_MODIFIED_DEAD_CELL
 #define COLOR_INVERTED_TEXT 5
-
-
-//README: This shouldn't be a global
-char* text_buffer;
 
 int init_curses(WINDOW** main_win, int* oldcur){
 	*main_win = initscr();
@@ -56,37 +55,52 @@ int init_curses(WINDOW** main_win, int* oldcur){
 
 void misc_inits(){
 	srand(time(NULL));
-	text_buffer = (char*) malloc(COLS * sizeof(char) + 1);
 }
 
-void wait_for_keypress() {
+char wait_for_keypress() {
 	timeout(-1);
-	getch();
+	char result = getch();
 	//TODO: Use previous timeout
 	timeout(0);
 	//README: Maybe flush stdin here
+
+	return result;
 }
 
-void display_text(char* text, ...){
+//TODO: Truncate the input
+void put_info_with_color(int color, char* text_buffer){
+	move(LINES -1, 0);
+	attron(COLOR_PAIR(color));
+	addstr(text_buffer);
+}
+
+void vprint_info_with_color(int color, char* text, va_list args){
+	char* text_buffer = (char*) alloca(COLS * sizeof(char) + 1);
+	vsnprintf(text_buffer, COLS + 1, text, args);
+
+	put_info_with_color(color, text_buffer);
+}
+
+void print_info(char* text, ...){
 	va_list args;
 	va_start(args, text);
-	vsnprintf(text_buffer, COLS + 1, text, args);
-	va_end(args);
-
-	move(LINES -1, 0);
-	attron(COLOR_PAIR(COLOR_INVERTED_TEXT));
-	printw(text_buffer);
+	vprint_info_with_color(COLOR_INVERTED_TEXT, text, args);
+	va_end(args);	
 }
 
 //TODO: Create a helper function to use var_args here too
-void display_text_and_block(char* text) {
+void print_info_and_block(char* text, ...) {
+	va_list args;
+	va_start(args, text);
+
 	char* continue_msg = "(Press any key to continue) ";
 	char* msg = (char*) alloca(strlen(text) + strlen(continue_msg) + 1);
 	strcpy(msg, text);
 	strcat(msg, continue_msg);
 
-	display_text(msg);
+	vprint_info_with_color(COLOR_WARNING_TEXT, msg, args);
 	wait_for_keypress();
+	va_end(args);
 }
 
 void clear_text(){
@@ -124,7 +138,7 @@ void draw_game_without_refresh(game_state* state, int show_generations){
 
 	if(show_generations){
 		clear_text();
-		display_text("Generation: %d", state->generations);
+		print_info("Generation: %d ", state->generations);
 	}
 }
 
@@ -175,7 +189,7 @@ void loop_game(game_state* state){
 }
 
 void edit_game(game_state* state){
-	display_text("  Edit Mode  ");
+	print_info("  Edit Mode  ");
 
 	timeout(-1);
 	//README: Maybe change these variables to line and col.
@@ -236,18 +250,35 @@ void edit_game(game_state* state){
 	}
 }
 
-void prompt_filename(game_state* state, int oldcur, char* buffer){
+int prompt_yes_no(char* msg) {
+	char* question_msg = ":[y/N] ";
+	char* msg_buffer = (char*) alloca(strlen(msg) + strlen(question_msg) + 1);
+
+	strcpy(msg_buffer, msg);
+	strcat(msg_buffer, question_msg);
+
+	put_info_with_color(COLOR_QUESTION_TEXT, msg_buffer);
+
+	switch (wait_for_keypress()){
+		case 'y':
+		case 'Y':
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
+void prompt_filename(char* filename, int oldcur){
 	echo();
 	curs_set(oldcur);
 
 	char* msg = "File name:";
 	clear_text();
-	display_text(msg);
-	draw_game(state);
+	print_info(msg);
 
 	move(LINES - 1, strlen(msg) + 1);
 	attron(COLOR_PAIR(COLOR_NORMAL_TEXT));
-	getstr(buffer);
+	getstr(filename);
 
 	noecho();
 	curs_set(0);
@@ -258,11 +289,13 @@ int save_game_to_file(game_state* state, char* filename){
 
 	if(!output_file) return FALSE;
 
+	size_t cell_size = sizeof(*state->current_matrix);
+
 	fwrite(&(state->lines), sizeof(state->lines), 1, output_file);
 	fwrite(&(state->cols), sizeof(state->cols), 1, output_file);
 
 	int n_cells = state->lines * state->cols;
-	fwrite(state->current_matrix, sizeof(char), n_cells, output_file);
+	fwrite(state->current_matrix, cell_size, n_cells, output_file);
 
 	fclose(output_file);
 	return TRUE;
@@ -273,20 +306,25 @@ int load_game_from_file(game_state* state, char* filename){
 
 	if(!input_file) return FALSE;
 
+	size_t cell_size = sizeof(*state->current_matrix);
 	int lines_in_file;
 	int cols_in_file;
 
 	fread(&lines_in_file, sizeof(lines_in_file), 1, input_file);
 	fread(&cols_in_file, sizeof(cols_in_file), 1, input_file);
 
-	//TODO: Make it user friendly.
-	//File is too large. Clipping
 	if(lines_in_file > state->lines){
+		if(!prompt_yes_no("Too many lines. Would you like to clip it? "))
+			return FALSE;
+		
 		lines_in_file = state->lines;
 	}
 
 	int cells_to_ignore = 0;
 	if(cols_in_file > state->cols){
+		if(!prompt_yes_no("Too many columns. Would you like to clip it? "))
+			return FALSE;
+
 		cells_to_ignore = cols_in_file - state->cols;
 		cols_in_file = state->cols;
 	}
@@ -294,15 +332,27 @@ int load_game_from_file(game_state* state, char* filename){
 	//TODO: Handle the case wherein the file is smaller than the game_state
 	//      Maybe center the file world
 
-	set_world_to_value(state, DEAD);
+	int padding_line = 0;
+	int padding_col = 0;
+	if(lines_in_file < state->lines || cols_in_file < state->cols){
+		set_world_to_value(state, DEAD);
+		if(prompt_yes_no("World too small. Would you like to center it? ")){
+			if(lines_in_file < state->lines)
+				padding_line = (state->lines - lines_in_file) / 2;
 
-	char value;
-	char* cells_ptr = state->current_matrix;
+			if(cols_in_file < state->cols)
+				padding_col = (state->cols - cols_in_file) / 2;
+		}
+	}
+
+	char* cells_ptr = state->current_matrix + 
+					  (padding_line * state->cols  + padding_col);
+
 	for(int line = 0; line < lines_in_file; line++){
 		fread(cells_ptr, sizeof(char), cols_in_file, input_file);
 
 		if(cells_to_ignore){
-			fseek(input_file, cells_to_ignore * sizeof(char), SEEK_CUR);
+			fseek(input_file, cells_to_ignore * cell_size, SEEK_CUR);
 		}
 		
 		cells_ptr += state->cols;
@@ -317,19 +367,23 @@ int load_game_from_file(game_state* state, char* filename){
 void prompt_and_save_game_to_file(game_state* state, int oldcur){
 	char buffer[1024]; //TODO: make it big enough
 	
-	prompt_filename(state, oldcur, buffer);
+	prompt_filename(buffer, oldcur);
 
-	if(!save_game_to_file(state, buffer))
-		display_text_and_block(" Couldn't save file. ");
+	if(!save_game_to_file(state, buffer)){
+		clear_text();
+		print_info_and_block(" Couldn't save file. ");
+	}
 }
 
 void prompt_and_load_game_from_file(game_state* state, int oldcur){
 	char buffer[1024]; //TODO: make it big enough
 	
-	prompt_filename(state, oldcur, buffer);
+	prompt_filename(buffer, oldcur);
 
-	if(!load_game_from_file(state, buffer))
-		display_text_and_block(" Couldn't open file. ");
+	if(!load_game_from_file(state, buffer)){
+		clear_text();
+		print_info_and_block(" Couldn't open file. ");
+	}
 }
 
 int main(int argc, char** argv){

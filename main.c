@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <alloca.h>
 #include <ncurses.h>
 #include <unistd.h>
 #include <time.h>
@@ -9,10 +10,9 @@
 
 //TODO: Change matrix, board, etc. to world
 //TODO: Implement getstr so the directional keys can be used (See TODO below)
-//TODO: Create a default save dictory and search the files in there while loading.
+//TODO: Create a default save directory and search the files in there while loading.
 //      The user should be able to choose the file using the up/down keys
 //TODO: Handle change of terminal size events
-//TODO: Make a blocking version of display_text
 //TODO: Use Unicode
 //TODO: Use stdint (P.S.: This may cause problems in save/load game to file)
 //TODO: Count generations
@@ -59,6 +59,14 @@ void misc_inits(){
 	text_buffer = (char*) malloc(COLS * sizeof(char) + 1);
 }
 
+void wait_for_keypress() {
+	timeout(-1);
+	getch();
+	//TODO: Use previous timeout
+	timeout(0);
+	//README: Maybe flush stdin here
+}
+
 void display_text(char* text, ...){
 	va_list args;
 	va_start(args, text);
@@ -68,6 +76,17 @@ void display_text(char* text, ...){
 	move(LINES -1, 0);
 	attron(COLOR_PAIR(COLOR_INVERTED_TEXT));
 	printw(text_buffer);
+}
+
+//TODO: Create a helper function to use var_args here too
+void display_text_and_block(char* text) {
+	char* continue_msg = "(Press any key to continue) ";
+	char* msg = (char*) alloca(strlen(text) + strlen(continue_msg) + 1);
+	strcpy(msg, text);
+	strcat(msg, continue_msg);
+
+	display_text(msg);
+	wait_for_keypress();
 }
 
 void clear_text(){
@@ -237,7 +256,7 @@ void prompt_filename(game_state* state, int oldcur, char* buffer){
 int save_game_to_file(game_state* state, char* filename){
 	FILE* output_file = fopen(filename, "wb");
 
-	if(!output_file) return 0;
+	if(!output_file) return FALSE;
 
 	fwrite(&(state->lines), sizeof(state->lines), 1, output_file);
 	fwrite(&(state->cols), sizeof(state->cols), 1, output_file);
@@ -246,13 +265,13 @@ int save_game_to_file(game_state* state, char* filename){
 	fwrite(state->current_matrix, sizeof(char), n_cells, output_file);
 
 	fclose(output_file);
-	return 1;
+	return TRUE;
 }
 
 int load_game_from_file(game_state* state, char* filename){
 	FILE* input_file = fopen(filename, "rb");
 
-	if(!input_file) return 0;
+	if(!input_file) return FALSE;
 
 	int lines_in_file;
 	int cols_in_file;
@@ -291,6 +310,8 @@ int load_game_from_file(game_state* state, char* filename){
 
 	clear_generations(state);
 	fclose(input_file);
+
+	return TRUE;
 }
 
 void prompt_and_save_game_to_file(game_state* state, int oldcur){
@@ -299,7 +320,7 @@ void prompt_and_save_game_to_file(game_state* state, int oldcur){
 	prompt_filename(state, oldcur, buffer);
 
 	if(!save_game_to_file(state, buffer))
-		display_text(" Couldn't save file. ");//TODO: block here
+		display_text_and_block(" Couldn't save file. ");
 }
 
 void prompt_and_load_game_from_file(game_state* state, int oldcur){
@@ -307,8 +328,8 @@ void prompt_and_load_game_from_file(game_state* state, int oldcur){
 	
 	prompt_filename(state, oldcur, buffer);
 
-	if(load_game_from_file(state, buffer))
-		display_text(" Couldn't open file. "); //TODO: block here
+	if(!load_game_from_file(state, buffer))
+		display_text_and_block(" Couldn't open file. ");
 }
 
 int main(int argc, char** argv){
@@ -321,12 +342,13 @@ int main(int argc, char** argv){
 	int oldcur;
 
 	if(!init_curses(&main_win, &oldcur))
-		return -2;	
+		return -1;	
 	
-	if(!init_game_state(&gameState, COLS, LINES - 1))
-		return -1;
-
 	misc_inits();
+
+	//Can't exit without endwin. Just skip the while-loop
+	if(!init_game_state(&gameState, COLS, LINES - 1))
+		running = FALSE;
 	
 
 	while(running){

@@ -7,26 +7,47 @@
 
 #include "game_of_life.c"
 
+//TODO: Change matrix, board, etc. to world
+//TODO: Implement getstr so the directional keys can be used (See TODO below)
+//TODO: Create a default save dictory and search the files in there while loading.
+//      The user should be able to choose the file using the up/down keys
 //TODO: Handle change of terminal size events
 //TODO: Make a blocking version of display_text
 //TODO: Use Unicode
-//TODO: Use stdint
+//TODO: Use stdint (P.S.: This may cause problems in save/load game to file)
 //TODO: Count generations
-//TODO: Save game to a file
-//TODO: Load game from a file
 //TODO: The boundaries of the board are creating some forms that shouldn't exist. 
 //      (e.g. when a glider reaches the end of the board). This should be handed more
 //      clearer.
+//README: Should the genarations be saved to the file?
+
+
+#define GAME_DELAY 100000
+
+#define COLOR_DEAD_CELL 1
+#define COLOR_ALIVE_CELL 2
+#define COLOR_MODIFIED_ALIVE_CELL 3
+#define COLOR_MODIFIED_DEAD_CELL 4
+
+#define COLOR_NORMAL_TEXT 1
+#define COLOR_INVERTED_TEXT 5
 
 void init_curses(){
 	
 }
 
-//TODO: Handle var_args.
-void display_text(char* text){
+//README: This shouldn't be a global
+char* text_buffer;
+
+void display_text(char* text, ...){
+	va_list args;
+	va_start(args, text);
+	vsnprintf(text_buffer, COLS + 1, text, args);
+	va_end(args);
+
 	move(LINES -1, 0);
-	attron(COLOR_PAIR(5));
-	printw(text);
+	attron(COLOR_PAIR(COLOR_INVERTED_TEXT));
+	printw(text_buffer);
 }
 
 void clear_text(){
@@ -47,36 +68,47 @@ void validate_and_apply(game_state* state, int* pos_x, int* pos_y,
 
 }
 
-void draw_game_without_refresh(game_state* state){
+void draw_game_without_refresh(game_state* state, int show_generations){
 	for(int line = 0; line < state->lines; line++){
 		for(int col = 0; col < state->cols; col++){
 			move(line, col);
 			int is_current_cell_alive = is_cell_alive(state, line, col);
 			if(is_current_cell_alive)
-				attron(COLOR_PAIR(2));
+				attron(COLOR_PAIR(COLOR_ALIVE_CELL));
 			else
-				attron(COLOR_PAIR(1));
+				attron(COLOR_PAIR(COLOR_DEAD_CELL));
 			
 			addch(' ');
 			
 		}
 	}
+
+	if(show_generations){
+		clear_text();
+		display_text("Generation: %d", state->generations);
+	}
 }
 
 void draw_game(game_state* state){
-	draw_game_without_refresh(state);
+	draw_game_without_refresh(state, FALSE);
+
+	refresh();
+}
+
+void draw_game_with_generations(game_state* state){
+	draw_game_without_refresh(state, TRUE);
 
 	refresh();
 }
 
 void draw_game_edit_mode(game_state* state, int line, int col){
-	draw_game_without_refresh(state);
+	draw_game_without_refresh(state, FALSE);
 
 	move(line, col);
 	if(is_cell_alive(state, line, col))
-		attron(COLOR_PAIR(3));
+		attron(COLOR_PAIR(COLOR_MODIFIED_ALIVE_CELL));
 	else 
-		attron(COLOR_PAIR(4));
+		attron(COLOR_PAIR(COLOR_MODIFIED_DEAD_CELL));
 
 	addch(' '); 
 
@@ -86,7 +118,7 @@ void draw_game_edit_mode(game_state* state, int line, int col){
 void step_game(game_state* state){
 	update_game_state(state);
 
-	draw_game(state);
+	draw_game_with_generations(state);
 }
 
 void loop_game(game_state* state){
@@ -98,8 +130,8 @@ void loop_game(game_state* state){
 			return;
 
 		update_game_state(state);
-		draw_game(state);
-		usleep(100000);
+		draw_game_with_generations(state);
+		usleep(GAME_DELAY);
 	}
 }
 
@@ -113,6 +145,8 @@ void edit_game(game_state* state){
 	int pos_x = 0;
 	int pos_y = 0;
 
+	int has_world_been_modified = 0;
+
 	while(1){
 		draw_game_edit_mode(state, pos_y, pos_x);
 		
@@ -120,7 +154,6 @@ void edit_game(game_state* state){
 
 		switch(input_char){
 			case 'q':
-				clear_text();
 				return;
 			case 'a':
 				set_cell_at_pos(state, pos_y, pos_x, ALIVE);
@@ -161,7 +194,6 @@ void edit_game(game_state* state){
 			default:
 				break;
 		}
-
 	}
 }
 
@@ -170,16 +202,16 @@ void prompt_filename(game_state* state, int oldcur, char* buffer){
 	curs_set(oldcur);
 
 	char* msg = "File name:";
+	clear_text();
 	display_text(msg);
 	draw_game(state);
 
 	move(LINES - 1, strlen(msg) + 1);
-	attron(COLOR_PAIR(1));
+	attron(COLOR_PAIR(COLOR_NORMAL_TEXT));
 	getstr(buffer);
 
 	noecho();
 	curs_set(0);
-	clear_text();
 }
 
 int save_game_to_file(game_state* state, char* filename){
@@ -214,7 +246,9 @@ int load_game_from_file(game_state* state, char* filename){
 		lines_in_file = state->lines;
 	}
 
+	int cells_to_ignore = 0;
 	if(cols_in_file > state->cols){
+		cells_to_ignore = cols_in_file - state->cols;
 		cols_in_file = state->cols;
 	}
 
@@ -224,14 +258,18 @@ int load_game_from_file(game_state* state, char* filename){
 	set_world_to_value(state, DEAD);
 
 	char value;
-	//TODO: Handle this with only one for-loop
+	char* cells_ptr = state->current_matrix;
 	for(int line = 0; line < lines_in_file; line++){
-		for (int col = 0; col < cols_in_file; col++){
-			fread(&value, sizeof(char), 1, input_file);
-			set_cell_at_pos(state, line, col, value);
+		fread(cells_ptr, sizeof(char), cols_in_file, input_file);
+
+		if(cells_to_ignore){
+			fseek(input_file, cells_to_ignore * sizeof(char), SEEK_CUR);
 		}
+		
+		cells_ptr += state->cols;
 	}
 
+	clear_generations(state);
 	fclose(input_file);
 }
 
@@ -262,11 +300,11 @@ int main(int argc, char** argv){
 	start_color();
 
 	//TODO: Theses modes should be defined constants
-	init_pair(1, COLOR_WHITE, COLOR_BLACK);
-	init_pair(2, COLOR_BLACK, COLOR_WHITE);
-	init_pair(3, COLOR_WHITE, COLOR_BLUE);
-	init_pair(4, COLOR_WHITE, COLOR_RED);
-	init_pair(5, COLOR_BLUE, COLOR_WHITE);
+	init_pair(COLOR_DEAD_CELL, COLOR_WHITE, COLOR_BLACK);
+	init_pair(COLOR_ALIVE_CELL, COLOR_BLACK, COLOR_WHITE);
+	init_pair(COLOR_MODIFIED_ALIVE_CELL, COLOR_WHITE, COLOR_BLUE);
+	init_pair(COLOR_MODIFIED_DEAD_CELL, COLOR_WHITE, COLOR_RED);
+	init_pair(COLOR_INVERTED_TEXT, COLOR_BLUE, COLOR_WHITE);
 
 	int oldcur = curs_set(0);
 	noecho();
@@ -278,8 +316,10 @@ int main(int argc, char** argv){
 
 	//TODO: This belongs to the init section
 	srand(time(NULL));
+	text_buffer = (char*) malloc(COLS * sizeof(char) + 1);
 
 	while(running){
+		clear_text();
 		draw_game(&gameState);
 
 		timeout(-1);
@@ -288,6 +328,7 @@ int main(int argc, char** argv){
 		switch(c) {
 			case 'r':
 				randomize_game(&gameState);
+				clear_generations(&gameState);
 				break;
 			case ' ':
 				step_game(&gameState);
@@ -297,12 +338,15 @@ int main(int argc, char** argv){
 				break;
 			case 'e':
 				edit_game(&gameState);
+				clear_generations(&gameState);
 				break;
 			case 'c':
 				set_world_to_value(&gameState, DEAD);
+				clear_generations(&gameState);
 				break;
 			case 'b':
 				set_world_to_value(&gameState, ALIVE);
+				clear_generations(&gameState);
 				break;
 			case 's':
 				prompt_and_save_game_to_file(&gameState, oldcur);

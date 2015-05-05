@@ -59,8 +59,13 @@ int init_game_state(game_state* state, int cols, int lines){
 	state->next_matrix = state->current_matrix + (lines * cols);
 	state->cols = cols;
 	state->lines = lines;
+	clear_generations(state);
 
 	return 1;
+}
+
+inline void clear_generations(game_state* state){
+	state->generations = 0;
 }
 
 void randomize_game(game_state* state){
@@ -106,6 +111,7 @@ void update_game_state(game_state* state){
 	char* tmp = state->current_matrix;
 	state->current_matrix = state->next_matrix;
 	state->next_matrix = tmp;
+	state->generations++;
 }
 
 inline int is_cell_alive(game_state* state, int line, int col){

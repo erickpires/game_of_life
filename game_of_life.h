@@ -9,10 +9,12 @@ typedef struct {
 	char* next_matrix;
 	int cols;
 	int lines;
+	int generations;
 	
 } game_state;
 
 int init_game_state(game_state*, int, int);
+void clear_generations(game_state*);
 void randomize_game(game_state*);
 void update_game_state(game_state*);
 int is_cell_alive(game_state*, int, int);

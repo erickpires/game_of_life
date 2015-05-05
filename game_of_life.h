@@ -5,8 +5,8 @@
 #define ALIVE 1
 
 typedef struct {
-	char* current_matrix;
-	char* next_matrix;
+	char* current_world;
+	char* next_world;
 	int cols;
 	int lines;
 	int generations;

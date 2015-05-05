@@ -17,8 +17,8 @@
 //TODO: Handle change of terminal size events
 //TODO: Use Unicode
 //TODO: Use stdint (P.S.: This may cause problems in save/load game to file)
-//TODO: The boundaries of the board are creating some forms that shouldn't exist. 
-//      (e.g. when a glider reaches the end of the board). This should be handed more
+//TODO: The boundaries of the world are creating some forms that shouldn't exist. 
+//      (e.g. when a glider reaches the end of the world). This should be handed more
 //      clearer.
 //README: Should the genarations be saved to the file?
 
@@ -289,13 +289,13 @@ int save_game_to_file(game_state* state, char* filename){
 
 	if(!output_file) return FALSE;
 
-	size_t cell_size = sizeof(*state->current_matrix);
+	size_t cell_size = sizeof(*state->current_world);
 
 	fwrite(&(state->lines), sizeof(state->lines), 1, output_file);
 	fwrite(&(state->cols), sizeof(state->cols), 1, output_file);
 
 	int n_cells = state->lines * state->cols;
-	fwrite(state->current_matrix, cell_size, n_cells, output_file);
+	fwrite(state->current_world, cell_size, n_cells, output_file);
 
 	fclose(output_file);
 	return TRUE;
@@ -306,7 +306,7 @@ int load_game_from_file(game_state* state, char* filename){
 
 	if(!input_file) return FALSE;
 
-	size_t cell_size = sizeof(*state->current_matrix);
+	size_t cell_size = sizeof(*state->current_world);
 	int lines_in_file;
 	int cols_in_file;
 
@@ -345,7 +345,7 @@ int load_game_from_file(game_state* state, char* filename){
 		}
 	}
 
-	char* cells_ptr = state->current_matrix + 
+	char* cells_ptr = state->current_world + 
 					  (padding_line * state->cols  + padding_col);
 
 	for(int line = 0; line < lines_in_file; line++){

@@ -2,12 +2,12 @@
 #include <math.h>
 
 inline char get_cell_at_pos(game_state* state, int line, int col){
-	int result = *(state->current_matrix + line * state->cols + col);
+	int result = *(state->current_world + line * state->cols + col);
 	return result;
 }
 
 inline void set_cell_at_pos(game_state* state, int line, int col, char value){
-	*(state->current_matrix + line * state->cols + col) = value;
+	*(state->current_world + line * state->cols + col) = value;
 }
 
 void set_world_to_value(game_state* state, char value){
@@ -24,7 +24,7 @@ inline void toggle_cell_at_pos(game_state* state, int line, int col){
 }
 
 inline void set_next_state(game_state* state, int line, int col, char value){
-	*(state->next_matrix + line * state->cols + col) = value;
+	*(state->next_world + line * state->cols + col) = value;
 }
 
 int count_alive_neighbors(game_state* state, int col, int line){
@@ -52,11 +52,11 @@ int count_alive_neighbors(game_state* state, int col, int line){
 // Tries to initialize the game state.
 // Returns 0 if the memory allocation fails, returns non-zero otherwise.
 int init_game_state(game_state* state, int cols, int lines){
-	state->current_matrix = (char*) malloc(2 *lines * cols * sizeof(int));
-	if(!state->current_matrix)
+	state->current_world = (char*) malloc(2 *lines * cols * sizeof(int));
+	if(!state->current_world)
 		return 0;
 
-	state->next_matrix = state->current_matrix + (lines * cols);
+	state->next_world = state->current_world + (lines * cols);
 	state->cols = cols;
 	state->lines = lines;
 	clear_generations(state);
@@ -80,9 +80,9 @@ void randomize_game(game_state* state){
 		}
 	}
 	//TODO: create a swap function / macro
-	char* tmp = state->current_matrix;
-	state->current_matrix = state->next_matrix;
-	state->next_matrix = tmp;
+	char* tmp = state->current_world;
+	state->current_world = state->next_world;
+	state->next_world = tmp;
 }
 
 void update_game_state(game_state* state){
@@ -108,9 +108,9 @@ void update_game_state(game_state* state){
 		}
 	}
 
-	char* tmp = state->current_matrix;
-	state->current_matrix = state->next_matrix;
-	state->next_matrix = tmp;
+	char* tmp = state->current_world;
+	state->current_world = state->next_world;
+	state->next_world = tmp;
 	state->generations++;
 }
 

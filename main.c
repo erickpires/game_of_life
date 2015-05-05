@@ -29,15 +29,35 @@
 #define COLOR_MODIFIED_ALIVE_CELL 3
 #define COLOR_MODIFIED_DEAD_CELL 4
 
-#define COLOR_NORMAL_TEXT 1
+#define COLOR_NORMAL_TEXT COLOR_DEAD_CELL
 #define COLOR_INVERTED_TEXT 5
 
-void init_curses(){
-	
-}
 
 //README: This shouldn't be a global
 char* text_buffer;
+
+int init_curses(WINDOW** main_win, int* oldcur){
+	*main_win = initscr();
+	start_color();
+
+	//TODO: Theses modes should be defined constants
+	init_pair(COLOR_DEAD_CELL, COLOR_WHITE, COLOR_BLACK);
+	init_pair(COLOR_ALIVE_CELL, COLOR_BLACK, COLOR_WHITE);
+	init_pair(COLOR_MODIFIED_ALIVE_CELL, COLOR_WHITE, COLOR_BLUE);
+	init_pair(COLOR_MODIFIED_DEAD_CELL, COLOR_WHITE, COLOR_RED);
+	init_pair(COLOR_INVERTED_TEXT, COLOR_BLUE, COLOR_WHITE);
+
+	*oldcur = curs_set(0);
+	noecho();
+	cbreak();	
+
+	return 1;
+}
+
+void misc_inits(){
+	srand(time(NULL));
+	text_buffer = (char*) malloc(COLS * sizeof(char) + 1);
+}
 
 void display_text(char* text, ...){
 	va_list args;
@@ -124,7 +144,7 @@ void step_game(game_state* state){
 void loop_game(game_state* state){
 	timeout(0);
 
-	while(1){
+	while(TRUE){
 		int c = getch();
 		if(c == 'q')
 			return;
@@ -147,7 +167,7 @@ void edit_game(game_state* state){
 
 	int has_world_been_modified = 0;
 
-	while(1){
+	while(TRUE){
 		draw_game_edit_mode(state, pos_y, pos_x);
 		
 		int input_char = getch();
@@ -293,30 +313,21 @@ void prompt_and_load_game_from_file(game_state* state, int oldcur){
 
 int main(int argc, char** argv){
 
-	int running = 1;
-
-	//TODO: Extract to an init function
-	WINDOW* main_win = initscr();
-	start_color();
-
-	//TODO: Theses modes should be defined constants
-	init_pair(COLOR_DEAD_CELL, COLOR_WHITE, COLOR_BLACK);
-	init_pair(COLOR_ALIVE_CELL, COLOR_BLACK, COLOR_WHITE);
-	init_pair(COLOR_MODIFIED_ALIVE_CELL, COLOR_WHITE, COLOR_BLUE);
-	init_pair(COLOR_MODIFIED_DEAD_CELL, COLOR_WHITE, COLOR_RED);
-	init_pair(COLOR_INVERTED_TEXT, COLOR_BLUE, COLOR_WHITE);
-
-	int oldcur = curs_set(0);
-	noecho();
-	cbreak();
-	
+	int running = TRUE;
 	game_state gameState;
+
+	//README: Maybe bundle these variables in a ncurses_context
+	WINDOW* main_win;
+	int oldcur;
+
+	if(!init_curses(&main_win, &oldcur))
+		return -2;	
+	
 	if(!init_game_state(&gameState, COLS, LINES - 1))
 		return -1;
 
-	//TODO: This belongs to the init section
-	srand(time(NULL));
-	text_buffer = (char*) malloc(COLS * sizeof(char) + 1);
+	misc_inits();
+	
 
 	while(running){
 		clear_text();
@@ -355,7 +366,7 @@ int main(int argc, char** argv){
 				prompt_and_load_game_from_file(&gameState, oldcur);
 				break;
 			case 'q':
-				running = 0;
+				running = FALSE;
 				break;
 			
 			default: break;

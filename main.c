@@ -8,8 +8,6 @@
 
 #include "game_of_life.c"
 
-
-//TODO: Use Home/End/PgUp/PgDown in edit mode
 //TODO: Implement getstr so the directional keys can be used (See TODO below)
 //TODO: Create a default save directory and search the files in there while loading.
 //      The user should be able to choose the file using the up/down keys
@@ -234,6 +232,22 @@ void edit_game(game_state* state){
 					case 66: //Down
 						new_line++;
 						break;
+					case 72: //Home
+						new_col = 0;
+						break;
+					case 70: //End
+						new_col = state->cols - 1;
+						break;
+					case 53: //may be PgUp
+						if(getch() != 126) break;
+						new_line = 0;
+
+						break;
+					case 54: //may be PgDown
+						if(getch() != 126) break;
+						new_line = state->lines - 1;
+
+						break;
 					default:	
 						break;
 				}
@@ -383,7 +397,6 @@ int main(int argc, char** argv){
 	int running = TRUE;
 	game_state gameState;
 
-	//README: Maybe bundle these variables in a ncurses_context
 	WINDOW* main_win;
 	int oldcur;
 

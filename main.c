@@ -1,6 +1,10 @@
+#define _XOPEN_SOURCE_EXTENDED 1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <alloca.h>
+#include <locale.h>
+#include <wchar.h>
 #include <ncurses.h>
 #include <unistd.h>
 #include <time.h>
@@ -21,25 +25,34 @@
 
 
 #define GAME_DELAY 100000
+#define UPPER_HALF_BLOCK 0x2580
+#define LOWER_HALF_BLOCK 0x2584
+#define FULL_BLOCK 0x2588
 
-#define COLOR_DEAD_CELL 1
-#define COLOR_ALIVE_CELL 2
-#define COLOR_MODIFIED_ALIVE_CELL 3
-#define COLOR_MODIFIED_DEAD_CELL 4
+#define COLOR_CELL 1
+#define COLOR_EDITING_CELL_ALIVE_OTHER_CELL_DEAD 2
+#define COLOR_EDITING_CELL_ALIVE_OTHER_CELL_ALIVE 3
+#define COLOR_EDITING_CELL_DEAD_OTHER_CELL_DEAD 4
+#define COLOR_EDITING_CELL_DEAD_OTHER_CELL_ALIVE 5
 
-#define COLOR_NORMAL_TEXT COLOR_DEAD_CELL
-#define COLOR_WARNING_TEXT COLOR_MODIFIED_ALIVE_CELL
-#define COLOR_QUESTION_TEXT COLOR_MODIFIED_DEAD_CELL
-#define COLOR_INVERTED_TEXT 5
+#define COLOR_NORMAL_TEXT COLOR_CELL
+#define COLOR_WARNING_TEXT 6
+#define COLOR_QUESTION_TEXT 7
+#define COLOR_INVERTED_TEXT 8
 
 int init_curses(WINDOW** main_win, int* oldcur){
 	*main_win = initscr();
 	start_color();
 
-	init_pair(COLOR_DEAD_CELL, COLOR_WHITE, COLOR_BLACK);
-	init_pair(COLOR_ALIVE_CELL, COLOR_BLACK, COLOR_WHITE);
-	init_pair(COLOR_MODIFIED_ALIVE_CELL, COLOR_WHITE, COLOR_BLUE);
-	init_pair(COLOR_MODIFIED_DEAD_CELL, COLOR_WHITE, COLOR_RED);
+	init_pair(COLOR_CELL, COLOR_WHITE, COLOR_BLACK);
+	
+	init_pair(COLOR_EDITING_CELL_ALIVE_OTHER_CELL_DEAD, COLOR_BLUE, COLOR_BLACK);
+	init_pair(COLOR_EDITING_CELL_ALIVE_OTHER_CELL_ALIVE, COLOR_BLUE, COLOR_WHITE);
+	init_pair(COLOR_EDITING_CELL_DEAD_OTHER_CELL_DEAD, COLOR_RED, COLOR_BLACK);
+	init_pair(COLOR_EDITING_CELL_DEAD_OTHER_CELL_ALIVE, COLOR_RED, COLOR_WHITE);
+
+	init_pair(COLOR_WARNING_TEXT, COLOR_WHITE, COLOR_BLUE);
+	init_pair(COLOR_QUESTION_TEXT, COLOR_WHITE, COLOR_RED);
 	init_pair(COLOR_INVERTED_TEXT, COLOR_BLUE, COLOR_WHITE);
 
 	*oldcur = curs_set(0);
@@ -117,16 +130,27 @@ void validate_and_apply(game_state* state, int* col, int* line,
 }
 
 void draw_game_without_refresh(game_state* state, int show_generations){
-	for(int line = 0; line < state->lines; line++){
+	//Each line in the terminal represents two lines of the game
+	//(using upper and lower half block characters)
+	for(int line = 0; line < state->lines; line += 2){
 		for(int col = 0; col < state->cols; col++){
-			move(line, col);
-			int is_current_cell_alive = is_cell_alive(state, line, col);
-			if(is_current_cell_alive)
-				attron(COLOR_PAIR(COLOR_ALIVE_CELL));
+			cchar_t temp;
+			temp.attr = COLOR_PAIR(COLOR_CELL);
+
+			int is_upper_cell_alive = is_cell_alive(state, line, col);
+			int is_lower_cell_alive = is_cell_alive(state, line + 1, col);
+			if(is_upper_cell_alive && is_lower_cell_alive)
+				temp.chars[0] = FULL_BLOCK;
+			else if(is_upper_cell_alive)
+				temp.chars[0] = UPPER_HALF_BLOCK;
+			else if(is_lower_cell_alive)
+				temp.chars[0] = LOWER_HALF_BLOCK;
 			else
-				attron(COLOR_PAIR(COLOR_DEAD_CELL));
+				temp.chars[0] = ' ';
 			
-			addch(' ');
+			temp.chars[1] = 0; // Null-terminating
+
+			mvadd_wch(line / 2, col, &temp); 
 			
 		}
 	}
@@ -152,13 +176,31 @@ void draw_game_with_generations(game_state* state){
 void draw_game_edit_mode(game_state* state, int line, int col){
 	draw_game_without_refresh(state, FALSE);
 
-	move(line, col);
-	if(is_cell_alive(state, line, col))
-		attron(COLOR_PAIR(COLOR_MODIFIED_ALIVE_CELL));
-	else 
-		attron(COLOR_PAIR(COLOR_MODIFIED_DEAD_CELL));
+	cchar_t temp;
 
-	addch(' '); 
+	int is_editing_cell_upper_cell = !(line % 2);
+	int other_line = is_editing_cell_upper_cell ? line + 1 : line - 1;
+	//move(line, col);
+	int is_editing_cell_alive = is_cell_alive(state, line, col);
+	int is_other_cell_alive = is_cell_alive(state, other_line, col);
+
+	if(is_editing_cell_alive && is_other_cell_alive)
+		temp.attr = COLOR_PAIR(COLOR_EDITING_CELL_ALIVE_OTHER_CELL_ALIVE);
+	else if(is_editing_cell_alive && !is_other_cell_alive)
+		temp.attr = COLOR_PAIR(COLOR_EDITING_CELL_ALIVE_OTHER_CELL_DEAD);
+	else if(!is_editing_cell_alive && is_other_cell_alive)
+		temp.attr = COLOR_PAIR(COLOR_EDITING_CELL_DEAD_OTHER_CELL_ALIVE);
+	else
+		temp.attr = COLOR_PAIR(COLOR_EDITING_CELL_DEAD_OTHER_CELL_DEAD);
+
+	if(is_editing_cell_upper_cell)
+		temp.chars[0] = UPPER_HALF_BLOCK;
+	else
+		temp.chars[0] = LOWER_HALF_BLOCK;
+	
+	temp.chars[1] = 0; // Null-terminating
+
+	mvadd_wch(line / 2, col, &temp); 
 
 	refresh();
 }
@@ -393,6 +435,7 @@ void prompt_and_load_game_from_file(game_state* state, int oldcur){
 }
 
 int main(int argc, char** argv){
+	setlocale(LC_ALL, "");
 
 	int running = TRUE;
 	game_state gameState;
@@ -406,7 +449,7 @@ int main(int argc, char** argv){
 	misc_inits();
 
 	//Can't exit without endwin. Just skip the while-loop
-	if(!init_game_state(&gameState, COLS, LINES - 1))
+	if(!init_game_state(&gameState, COLS, 2* (LINES - 1)))
 		running = FALSE;
 	
 
@@ -415,6 +458,7 @@ int main(int argc, char** argv){
 		draw_game(&gameState);
 
 		timeout(-1);
+
 		int c = getch();
 
 		switch(c) {

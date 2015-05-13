@@ -16,13 +16,11 @@
 //TODO: Create a default save directory and search the files in there while loading.
 //      The user should be able to choose the file using the up/down keys
 //TODO: Handle change of terminal size events
-//TODO: Use Unicode
-//TODO: Use stdint (P.S.: This may cause problems in save/load game to file)
+//TODO: Use stdint
 //TODO: The boundaries of the world are creating some forms that shouldn't exist. 
 //      (e.g. when a glider reaches the end of the world). This should be handed more
 //      clearer.
 //README: Should the genarations be saved to the file?
-
 
 #define GAME_DELAY 100000
 #define UPPER_HALF_BLOCK 0x2580
@@ -45,7 +43,8 @@ int init_curses(WINDOW** main_win, int* oldcur){
 	start_color();
 
 	init_pair(COLOR_CELL, COLOR_WHITE, COLOR_BLACK);
-	
+	//README:The number of colors could probably be reduced by inverting the upper 
+	//       and lower blocks, but it would be confusing.
 	init_pair(COLOR_EDITING_CELL_ALIVE_OTHER_CELL_DEAD, COLOR_BLUE, COLOR_BLACK);
 	init_pair(COLOR_EDITING_CELL_ALIVE_OTHER_CELL_ALIVE, COLOR_BLUE, COLOR_WHITE);
 	init_pair(COLOR_EDITING_CELL_DEAD_OTHER_CELL_DEAD, COLOR_RED, COLOR_BLACK);
@@ -66,21 +65,25 @@ void misc_inits(){
 	srand(time(NULL));
 }
 
+void discard_input_buffer(){
+	int c;
+	while((c = getch()) != '\n' && c != EOF);
+}
+
 char wait_for_keypress() {
 	timeout(-1);
 	char result = getch();
-	//TODO: Use previous timeout
-	timeout(0);
-	//README: Maybe flush stdin here
+	
+	timeout(0);	
+	discard_input_buffer();
 
 	return result;
 }
 
-//TODO: Truncate the input
 void put_info_with_color(int color, char* text){
 	move(LINES -1, 0);
 	attron(COLOR_PAIR(color));
-	addstr(text);
+	addnstr(text, COLS);
 }
 
 void vprint_info_with_color(int color, char* text, va_list args){
@@ -151,7 +154,6 @@ void draw_game_without_refresh(game_state* state, int show_generations){
 			temp.chars[1] = 0; // Null-terminating
 
 			mvadd_wch(line / 2, col, &temp); 
-			
 		}
 	}
 
@@ -180,7 +182,7 @@ void draw_game_edit_mode(game_state* state, int line, int col){
 
 	int is_editing_cell_upper_cell = !(line % 2);
 	int other_line = is_editing_cell_upper_cell ? line + 1 : line - 1;
-	//move(line, col);
+
 	int is_editing_cell_alive = is_cell_alive(state, line, col);
 	int is_other_cell_alive = is_cell_alive(state, other_line, col);
 
@@ -201,7 +203,6 @@ void draw_game_edit_mode(game_state* state, int line, int col){
 	temp.chars[1] = 0; // Null-terminating
 
 	mvadd_wch(line / 2, col, &temp); 
-
 	refresh();
 }
 

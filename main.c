@@ -22,7 +22,7 @@
 //      clearer.
 //README: Should the genarations be saved to the file?
 
-#define GAME_DELAY 100000
+#define GAME_DELAY ((__useconds_t)100000)
 #define UPPER_HALF_BLOCK 0x2580
 #define LOWER_HALF_BLOCK 0x2584
 #define FULL_BLOCK 0x2588
@@ -233,8 +233,6 @@ void edit_game(game_state* state){
 
 	int col = 0;
 	int line = 0;
-
-	int has_world_been_modified = 0;
 
 	while(TRUE){
 		draw_game_edit_mode(state, line, col);

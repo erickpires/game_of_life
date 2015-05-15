@@ -52,7 +52,8 @@ int count_alive_neighbors(game_state* state, int line, int col){
 // Tries to initialize the game state.
 // Returns 0 if the memory allocation fails, returns non-zero otherwise.
 int init_game_state(game_state* state, int cols, int lines){
-	state->current_world = (char*) malloc(2 *lines * cols * sizeof(int));
+	state->current_world = (char*) malloc(2 *lines * cols * 
+										  sizeof(*state->current_world));
 	if(!state->current_world)
 		return 0;
 

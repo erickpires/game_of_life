@@ -14,6 +14,7 @@ typedef struct {
 } game_state;
 
 int init_game_state(game_state*, int, int);
+int change_game_state_size(game_state*, int, int);
 void clear_generations(game_state*);
 void randomize_game(game_state*);
 void update_game_state(game_state*);

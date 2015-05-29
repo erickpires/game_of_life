@@ -9,9 +9,11 @@
 #include <unistd.h>
 #include <time.h>
 #include <string.h>
+#include <signal.h>
 
 #include "game_of_life.c"
 
+//TODO: The game runs faster when changing the terminal size. (The program unblocks on usleep)
 //TODO: Implement getstr so the directional keys can be used (See TODO below)
 //TODO: Create a default save directory and search the files in there while loading.
 //      The user should be able to choose the file using the up/down keys
@@ -20,9 +22,9 @@
 //TODO: The boundaries of the world are creating some forms that shouldn't exist. 
 //      (e.g. when a glider reaches the end of the world). This should be handed more
 //      clearer.
-//README: Should the genarations be saved to the file?
 
 #define GAME_DELAY ((__useconds_t)100000)
+#define N_LINES ((LINES-1)*2)
 #define UPPER_HALF_BLOCK 0x2580
 #define LOWER_HALF_BLOCK 0x2584
 #define FULL_BLOCK 0x2588
@@ -59,6 +61,18 @@ int init_curses(WINDOW** main_win, int* oldcur){
 	cbreak();	
 
 	return 1;
+}
+
+int window_has_changed = FALSE;
+
+void handle_window_size_change(int sig){
+	window_has_changed = TRUE;
+
+	endwin();
+	refresh();
+	clear();
+
+	signal(SIGWINCH, handle_window_size_change);
 }
 
 void misc_inits(){
@@ -216,6 +230,13 @@ void loop_game(game_state* state){
 	timeout(0);
 
 	while(TRUE){
+		if(window_has_changed) {
+			if(!change_game_state_size(state, N_LINES, COLS)){
+				return;
+			}
+			window_has_changed = FALSE;
+		}
+
 		int c = getch();
 		if(c == 'q')
 			return;
@@ -446,13 +467,21 @@ int main(int argc, char** argv){
 		return -1;	
 	
 	misc_inits();
+	signal(SIGWINCH, handle_window_size_change);
 
 	//Can't exit without endwin. Just skip the while-loop
-	if(!init_game_state(&gameState, COLS, 2* (LINES - 1)))
+	if(!init_game_state(&gameState, N_LINES, COLS))
 		running = FALSE;
-	
 
 	while(running){
+		if(window_has_changed) {
+			if(!change_game_state_size(&gameState, N_LINES, COLS)){
+				running = FALSE;
+				continue;
+			}
+			window_has_changed = FALSE;
+		}
+
 		clear_display_area();
 		draw_game(&gameState);
 
